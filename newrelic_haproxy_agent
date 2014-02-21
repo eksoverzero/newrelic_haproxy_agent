@@ -1,0 +1,137 @@
+#!/usr/bin/env ruby
+
+require "rubygems"
+require "bundler/setup"
+require "newrelic_plugin"
+
+if RUBY_VERSION < "1.9"
+  require 'fastercsv'
+else
+  # typically, avoid require. In this case we can't use needs' deferred loading because we need to alias CSV
+  require 'csv'
+  FasterCSV=CSV
+end
+require 'open-uri'
+
+module NewRelicHaproxyAgent
+
+  VERSION = '1.0.1'
+
+  class Agent < NewRelic::Plugin::Agent::Base
+
+    agent_guid "com.railsware.haproxy"
+    agent_config_options :name, :url, :proxy, :proxy_type, :user, :password
+    agent_version NewRelicHaproxyAgent::VERSION
+    agent_human_labels("HAproxy") { name }
+
+    def setup_metrics
+      @requests = NewRelic::Processor::EpochCounter.new
+      @errors_req = NewRelic::Processor::EpochCounter.new
+      @errors_conn = NewRelic::Processor::EpochCounter.new
+      @errors_resp = NewRelic::Processor::EpochCounter.new
+      @bytes_in = NewRelic::Processor::EpochCounter.new
+      @bytes_out = NewRelic::Processor::EpochCounter.new
+    end
+
+    def poll_cycle
+      stats = get_haproxy_status
+      return nil unless stats
+
+      proxy_name = proxy && proxy != "" ? proxy : nil
+      proxy_name_type = proxy_type && proxy_type =~ /frontend|backend/i ? proxy_type.upcase : nil
+
+      if proxy_name.nil?
+        print "ERROR Proxy setting is required.\n"
+        return nil
+      end
+
+      stats.select!{ |s| s['# pxname'] == proxy_name }
+      unless stats.length > 0
+        print "ERROR Cannot find stats for the provided proxy setting.\n"
+        return nil
+      end
+
+      if stats.length > 1 && proxy_name_type.nil?
+        print "ERROR Multiple stats found for the provided proxy settings. No proxy type found to uniquely identify.\n"
+        return nil
+      end
+
+      stats.select!{ |s| s['svname'] == proxy_name_type }
+
+      if stats.length > 1
+        print "ERROR Multiple stats found for the provided proxy and proxy type settings.\n"
+        return nil
+      end
+
+      stats = stats.first
+
+      report_metric "Requests", "Requests/Minute",             (@requests.process(stats['stot'].to_i) || 0) * 60
+      report_metric "Errors/Request", "Errors/Minute",         (@errors_req.process(stats['ereq'].to_i) || 0) * 60
+      report_metric "Errors/Connection", "Errors/Minute",      (@errors_conn.process(stats['econ'].to_i) || 0) * 60
+      report_metric "Errors/Response", "Errors/Minute",        (@errors_resp.process(stats['eresp'].to_i) || 0) * 60
+
+      report_metric "Bytes/Received", "Bytes/Seconds",          @bytes_in.process(stats['bin'].to_i)
+      report_metric "Bytes/Sent", "Bytes/Seconds",              @bytes_out.process(stats['bout'].to_i)
+
+      report_metric "Sessions/Active", "Sessions",              stats['scur']
+      report_metric "Sessions/Queued", "Sessions",              stats['qcur']
+      report_metric "Servers/Active", "Servers",                stats['act']
+      report_metric "Servers/Backup", "Servers",                stats['bck']
+      report_metric "ProxyUp", "Status",                        %w(UP OPEN).find {|s| s == stats['status']} ? 1 : 0
+    end
+
+    def get_haproxy_status
+      begin
+        u = URI.parse("#{url}")
+        r = ::Net::HTTP::Get.new(u.request_uri)
+
+        unless user.to_s.empty?
+          r.basic_auth user, password
+        end
+
+        http = ::Net::HTTP.new(u.host, u.port)
+        http.open_timeout = 5
+        http.read_timeout = 5
+        resp = http.request(r)
+      rescue Timeout::Error
+        print "ERROR while gathering stats from #{url}: connect/read timeout.\n"
+        return nil
+      rescue Exception => e
+        print "ERROR while gathering stats from #{url}: #{e.message}\n"
+        return nil
+      end
+
+      if !resp.is_a?(Net::HTTPSuccess)
+        print "ERROR while gathering stats from #{url}: #{resp.code} -> #{resp.message}\n"
+        return nil
+      end
+
+      if resp.content_type != "text/plain"
+        print "ERROR while parsing stats from #{url}: Excepted plain text\n"
+        return nil
+      end
+
+      stats = Array.new
+
+      begin
+        FasterCSV.parse(resp.body, headers: true) do |row|
+          stats << row.to_hash
+        end
+      rescue FasterCSV::MalformedCSVError
+        print "ERROR while parsing CSV from #{url}\n"
+        return nil
+      end
+
+      return stats
+    end
+
+  end
+
+  private
+
+  NewRelic::Plugin::Config.config_file = File.dirname(__FILE__) + '/config/newrelic_plugin.yml'
+  NewRelic::Plugin::Setup.install_agent :haproxy_status_agent, self
+
+  NewRelic::Plugin::Run.setup_and_run
+end
+
