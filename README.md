@@ -2,6 +2,8 @@
 
 Repurposed from https://github.com/railsware/newrelic_platform_plugins/tree/master/newrelic_haproxy_agent
 
+This "version" will follow the above mentioned plugin version.
+
 The New Relic Haproxy Plugin enables monitoring of HAProxy – a TCP/HTTP load balancer – and reports the following data for a specified proxy:
 
 * Error Rate (per-min)
