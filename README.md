@@ -4,7 +4,7 @@ Repurposed from https://github.com/railsware/newrelic_platform_plugins/tree/mast
 
 This "version" will follow the above mentioned plugin version.
 
-The New Relic Haproxy Plugin enables monitoring of HAProxy – a TCP/HTTP load balancer – and reports the following data for a specified proxy:
+The New Relic HAProxy Plugin enables monitoring of HAProxy – a TCP/HTTP load balancer – and reports the following data for a specified proxy:
 
 * Error Rate (per-min)
 * Proxy Status
@@ -28,7 +28,7 @@ software components installed:
 1. run `bundle install` to install required gems
 2. Copy `config/newrelic_plugin.yml.example` to `config/newrelic_plugin.yml`
 3. Edit `config/newrelic_plugin.yml` and replace "YOUR_LICENSE_KEY_HERE" with your New Relic license key
-4. Edit the `config/newrelic_plugin.yml` file and add the Haproxy status URL
+4. Edit the `config/newrelic_plugin.yml` file and add the HAProxy status URL
 5. Running the plugin
 
 In order to check your configuration, you can launch the plugin
@@ -52,18 +52,28 @@ and stop it with
 
   ./newrelic_haproxy_agent.daemon stop
 
-### Using Monit to keep the Agent running
-
-On Ubuntu: `sudo apt-get install monit`
-
-Example config file:
+### Monit example
 
 ```
-# /etc/monit/conf.d/newrelic_haproxy_agent.conf
 check process newrelic_haproxy_agent
-  with pidfile /home/ubuntu/newrelic_memacached_agent/newrelic_haproxy_agent.pid
-  start program = "/bin/su - ubuntu -c '/home/ubuntu/newrelic_haproxy_agent/newrelic_haproxy_agent.daemon start'" with timeout 90 seconds
-  stop program = "/bin/su - ubuntu -c '/home/ubuntu/newrelic_haproxy_agent/newrelic_haproxy_agent.daemon stop'" with timeout 90 seconds
+  with pidfile /home/ubuntu/newrelic_haproxy_agent/newrelic_haproxy_agent.pid
+  start program = "/bin/su - ubuntu -c '/home/ubuntu/newrelic_elasticsearch_agent/newrelic_haproxy_agent.daemon start'" with timeout 90 seconds
+  stop program = "/bin/su - ubuntu -c '/home/ubuntu/newrelic_elasticsearch_agent/newrelic_haproxy_agent.daemon stop'" with timeout 90 seconds
   if totalmem is greater than 250 MB for 2 cycles then restart
   group newrelic_agent
 ```
+
+### Supervisord example
+
+```
+[program:newrelic_haproxy_agent]
+command = bash -c ./newrelic_haproxy_agent
+directory = /home/ubuntu/newrelic_haproxy_agent
+autostart = true
+autorestart = true
+startretries = 10
+user = root
+startsecs = 10
+redirect_stderr = true
+stdout_logfile_maxbytes = 50MB
+stopwaitsecs = 10

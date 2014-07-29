@@ -1,8 +1,9 @@
 #!/usr/bin/env ruby
 
-require "rubygems"
-require "bundler/setup"
-require "newrelic_plugin"
+require 'rubygems'
+require 'bundler/setup'
+require 'newrelic_plugin'
+require 'open-uri'
 
 if RUBY_VERSION < "1.9"
   require 'fastercsv'
@@ -11,12 +12,11 @@ else
   require 'csv'
   FasterCSV=CSV
 end
-require 'open-uri'
 
 module NewRelicHaproxyAgent
   class Agent < NewRelic::Plugin::Agent::Base
 
-    agent_guid 'com.secondimpression.newrelic-haproxy-agent'
+    agent_guid 'com.secondimpression.newrelic-haproxy'
     agent_version '1.0.1'
     agent_config_options :name, :url, :proxy, :proxy_type, :user, :password
     agent_human_labels("HAProxy") { name }
@@ -125,7 +125,7 @@ module NewRelicHaproxyAgent
   private
 
   NewRelic::Plugin::Config.config_file = File.dirname(__FILE__) + '/config/newrelic_plugin.yml'
-  NewRelic::Plugin::Setup.install_agent :haproxy_status_agent, self
+  NewRelic::Plugin::Setup.install_agent :haproxy, self
 
   NewRelic::Plugin::Run.setup_and_run
 end
